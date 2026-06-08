@@ -1,8 +1,9 @@
 torch
 torchvision
+albumentations
+opencv-python-headless
 efficientnet_pytorch
 numpy
 Pillow
 PyYAML
 scikit-learn
-

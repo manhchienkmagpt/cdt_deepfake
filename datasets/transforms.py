@@ -1,9 +1,9 @@
-import random
 from collections.abc import Sequence
-from io import BytesIO
 from typing import Dict, Optional, Tuple
 
-from torchvision import transforms
+import albumentations as A
+import numpy as np
+from albumentations.pytorch import ToTensorV2
 
 
 def _pair(value, default: Optional[Tuple[float, float]] = None):
@@ -14,15 +14,6 @@ def _pair(value, default: Optional[Tuple[float, float]] = None):
             raise ValueError("Augmentation limits must contain exactly two values")
         return value[0], value[1]
     return value, value
-
-
-def _delta_limit_to_factor(value):
-    low, high = _pair(value)
-    low = max(0.0, 1.0 + float(low))
-    high = max(0.0, 1.0 + float(high))
-    if low > high:
-        low, high = high, low
-    return low, high
 
 
 def _odd_kernel_range(value):
@@ -41,34 +32,32 @@ def _odd_kernel_range(value):
     return low, high
 
 
-class RandomGaussianBlurRange:
-    def __init__(self, kernel_limit, sigma=(0.1, 2.0)):
-        self.kernel_low, self.kernel_high = _odd_kernel_range(kernel_limit)
-        self.sigma = sigma
+def _rotate_limit(value):
+    if isinstance(value, Sequence) and not isinstance(value, str):
+        return _pair(value)
+    value = float(value)
+    return -value, value
+
+
+def _image_compression(quality_lower, quality_upper, prob):
+    quality = (int(quality_lower), int(quality_upper))
+    quality = (max(1, min(100, quality[0])), max(1, min(100, quality[1])))
+    if quality[0] > quality[1]:
+        quality = (quality[1], quality[0])
+
+    try:
+        return A.ImageCompression(quality_lower=quality[0], quality_upper=quality[1], p=prob)
+    except TypeError:
+        return A.ImageCompression(quality_range=quality, p=prob)
+
+
+class AlbumentationsTransform:
+    def __init__(self, transform):
+        self.transform = transform
 
     def __call__(self, image):
-        kernel_size = random.randrange(self.kernel_low, self.kernel_high + 1, 2)
-        return transforms.GaussianBlur(kernel_size=kernel_size, sigma=self.sigma)(image)
-
-
-class RandomJPEGCompression:
-    def __init__(self, quality_lower: int, quality_upper: int):
-        quality_lower, quality_upper = int(quality_lower), int(quality_upper)
-        if quality_lower > quality_upper:
-            quality_lower, quality_upper = quality_upper, quality_lower
-        self.quality_lower = max(1, min(100, quality_lower))
-        self.quality_upper = max(1, min(100, quality_upper))
-
-    def __call__(self, image):
-        quality = random.randint(self.quality_lower, self.quality_upper)
-        buffer = BytesIO()
-        image.save(buffer, format="JPEG", quality=quality)
-        buffer.seek(0)
-        mode = "RGB" if image.mode == "P" else image.mode
-        from PIL import Image
-
-        with Image.open(buffer) as compressed:
-            return compressed.convert(mode)
+        image = np.array(image)
+        return self.transform(image=image)["image"]
 
 
 def build_transforms(config: Dict, train: bool):
@@ -78,51 +67,71 @@ def build_transforms(config: Dict, train: bool):
     mean = data_cfg.get("mean", [0.5, 0.5, 0.5])
     std = data_cfg.get("std", [0.5, 0.5, 0.5])
 
-    steps = [transforms.Resize((image_size, image_size))]
+    steps = []
     if train and aug_cfg.get("enabled", True):
-        if aug_cfg.get("horizontal_flip", 0.5) > 0:
-            steps.append(transforms.RandomHorizontalFlip(p=float(aug_cfg.get("horizontal_flip", 0.5))))
-        rotate = float(aug_cfg.get("rotate_limit", 0))
-        if rotate > 0:
-            steps.append(transforms.RandomRotation(degrees=(-rotate, rotate)))
+        horizontal_flip = float(aug_cfg.get("horizontal_flip", 0.5))
+        if horizontal_flip > 0:
+            steps.append(A.HorizontalFlip(p=horizontal_flip))
+
+        rotate_limit = aug_cfg.get("rotate_limit", 0)
+        if rotate_limit:
+            steps.append(
+                A.Rotate(
+                    limit=_rotate_limit(rotate_limit),
+                    border_mode=0,
+                    p=float(aug_cfg.get("rotate_prob", 1.0)),
+                )
+            )
 
         blur_prob = float(aug_cfg.get("blur_prob", 0.0))
         if blur_prob > 0:
             steps.append(
-                transforms.RandomApply(
-                    [RandomGaussianBlurRange(aug_cfg.get("blur_limit", [3, 3]))],
+                A.GaussianBlur(
+                    blur_limit=_odd_kernel_range(aug_cfg.get("blur_limit", [3, 3])),
                     p=blur_prob,
                 )
             )
 
+    steps.append(A.Resize(height=image_size, width=image_size))
+
+    if train and aug_cfg.get("enabled", True):
         brightness_limit = aug_cfg.get("brightness_limit", None)
         contrast_limit = aug_cfg.get("contrast_limit", None)
         if brightness_limit is not None or contrast_limit is not None:
-            color_jitter = {}
-            if brightness_limit is not None:
-                color_jitter["brightness"] = _delta_limit_to_factor(brightness_limit)
-            if contrast_limit is not None:
-                color_jitter["contrast"] = _delta_limit_to_factor(contrast_limit)
             steps.append(
-                transforms.RandomApply(
-                    [transforms.ColorJitter(**color_jitter)],
+                A.OneOf(
+                    [
+                        A.RandomBrightnessContrast(
+                            brightness_limit=_pair(brightness_limit, (0.0, 0.0)),
+                            contrast_limit=_pair(contrast_limit, (0.0, 0.0)),
+                        ),
+                        A.FancyPCA(),
+                        A.HueSaturationValue(),
+                    ],
                     p=float(aug_cfg.get("brightness_prob", 0.0)),
                 )
             )
         else:
             color_jitter = aug_cfg.get("color_jitter", None)
             if color_jitter:
-                steps.append(transforms.ColorJitter(**color_jitter))
+                steps.append(
+                    A.RandomBrightnessContrast(
+                        brightness_limit=float(color_jitter.get("brightness", 0.0)),
+                        contrast_limit=float(color_jitter.get("contrast", 0.0)),
+                        p=1.0,
+                    )
+                )
 
         quality_lower = aug_cfg.get("quality_lower", None)
         quality_upper = aug_cfg.get("quality_upper", None)
         if quality_lower is not None and quality_upper is not None:
             steps.append(
-                transforms.RandomApply(
-                    [RandomJPEGCompression(quality_lower, quality_upper)],
-                    p=float(aug_cfg.get("quality_prob", 1.0)),
+                _image_compression(
+                    quality_lower,
+                    quality_upper,
+                    float(aug_cfg.get("quality_prob", 1.0)),
                 )
             )
 
-    steps.extend([transforms.ToTensor(), transforms.Normalize(mean=mean, std=std)])
-    return transforms.Compose(steps)
+    steps.extend([A.Normalize(mean=mean, std=std), ToTensorV2()])
+    return AlbumentationsTransform(A.Compose(steps))
