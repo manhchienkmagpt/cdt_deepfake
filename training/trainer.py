@@ -5,12 +5,20 @@ from typing import Dict, Tuple
 import torch
 from torch.utils.data import DataLoader
 
-from chien_deepfake.evaluation.evaluator import evaluate
-from chien_deepfake.training.early_stopping import EarlyStopping
-from chien_deepfake.training.losses import build_loss
-from chien_deepfake.training.optimizers import build_optimizer
-from chien_deepfake.training.schedulers import build_scheduler
-from chien_deepfake.utils.checkpoint import load_checkpoint, save_checkpoint
+if "." in __package__:
+    from ..evaluation.evaluator import evaluate
+    from ..utils.checkpoint import load_checkpoint, save_checkpoint
+    from .early_stopping import EarlyStopping
+    from .losses import build_loss
+    from .optimizers import build_optimizer
+    from .schedulers import build_scheduler
+else:
+    from evaluation.evaluator import evaluate
+    from training.early_stopping import EarlyStopping
+    from training.losses import build_loss
+    from training.optimizers import build_optimizer
+    from training.schedulers import build_scheduler
+    from utils.checkpoint import load_checkpoint, save_checkpoint
 
 
 class Trainer:
@@ -110,4 +118,3 @@ class Trainer:
         )
         self.logger.info("Saved metrics: %s", output_path)
         return metrics
-

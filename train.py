@@ -6,13 +6,19 @@ import torch
 from torch.utils.data import DataLoader
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT.parent))
-
-from chien_deepfake.datasets import DeepfakeImageFolderDataset, build_transforms
-from chien_deepfake.models import build_model
-from chien_deepfake.training import Trainer
-from chien_deepfake.utils import load_config, set_seed
-from chien_deepfake.utils.logger import setup_logger
+if __package__:
+    from .datasets import DeepfakeImageFolderDataset, build_transforms
+    from .models import build_model
+    from .training import Trainer
+    from .utils import load_config, set_seed
+    from .utils.logger import setup_logger
+else:
+    sys.path.insert(0, str(ROOT))
+    from datasets import DeepfakeImageFolderDataset, build_transforms
+    from models import build_model
+    from training import Trainer
+    from utils import load_config, set_seed
+    from utils.logger import setup_logger
 
 
 def build_loader(config, dataset_name: str, split: str, train: bool):
@@ -66,4 +72,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
