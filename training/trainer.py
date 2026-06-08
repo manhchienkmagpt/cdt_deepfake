@@ -4,6 +4,7 @@ from typing import Dict, Tuple
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 if "." in __package__:
     from ..evaluation.evaluator import evaluate
@@ -45,7 +46,8 @@ class Trainer:
         total_loss = 0.0
         total_samples = 0
 
-        for images, labels, _ in loader:
+        progress = tqdm(loader, desc=f"Epoch {epoch:03d} train", unit="batch", leave=False)
+        for images, labels, _ in progress:
             images = images.to(self.device, non_blocking=True)
             labels = labels.to(self.device, non_blocking=True).long()
 
@@ -58,6 +60,7 @@ class Trainer:
 
             total_loss += loss.item() * images.size(0)
             total_samples += images.size(0)
+            progress.set_postfix(loss=f"{total_loss / max(total_samples, 1):.6f}")
 
         avg_loss = total_loss / max(total_samples, 1)
         self.logger.info("Epoch %03d | train_loss=%.6f", epoch, avg_loss)
@@ -74,7 +77,7 @@ class Trainer:
 
         for epoch in range(1, epochs + 1):
             self.train_one_epoch(train_loader, epoch)
-            val_metrics, _ = evaluate(self.model, val_loader, self.device)
+            val_metrics, _ = evaluate(self.model, val_loader, self.device, desc=f"Epoch {epoch:03d} val")
             self.logger.info(
                 "Epoch %03d | val Accuracy=%.4f F1_score=%.4f Precision=%.4f Recall=%.4f AUC=%.4f",
                 epoch,
@@ -101,7 +104,7 @@ class Trainer:
         return str(best_path), best_metrics
 
     def test_and_save(self, loader: DataLoader, dataset_name: str, results_dir: str) -> Dict[str, float]:
-        metrics, _ = evaluate(self.model, loader, self.device)
+        metrics, _ = evaluate(self.model, loader, self.device, desc=f"Test {dataset_name}")
         model_name = self.config.get("model_name", self.config.get("model", {}).get("name", "model"))
         output_path = Path(results_dir) / f"{model_name}_{dataset_name}_metrics.json"
         output_path.parent.mkdir(parents=True, exist_ok=True)

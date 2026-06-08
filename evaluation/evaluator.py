@@ -2,18 +2,24 @@ from typing import Dict, List, Tuple
 
 import torch
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 
 from .metrics import compute_metrics
 
 
 @torch.no_grad()
-def evaluate(model: torch.nn.Module, loader: DataLoader, device: torch.device) -> Tuple[Dict[str, float], List[str]]:
+def evaluate(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    desc: str = "Evaluate",
+) -> Tuple[Dict[str, float], List[str]]:
     model.eval()
     labels = []
     probs = []
     paths = []
 
-    for images, batch_labels, batch_paths in loader:
+    for images, batch_labels, batch_paths in tqdm(loader, desc=desc, unit="batch", leave=False):
         images = images.to(device, non_blocking=True)
         batch_labels = batch_labels.to(device, non_blocking=True).long()
         output = model(images)
@@ -25,4 +31,3 @@ def evaluate(model: torch.nn.Module, loader: DataLoader, device: torch.device) -
         paths.extend(list(batch_paths))
 
     return compute_metrics(labels, probs), paths
-

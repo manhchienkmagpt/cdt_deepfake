@@ -46,9 +46,9 @@ def _image_compression(quality_lower, quality_upper, prob):
         quality = (quality[1], quality[0])
 
     try:
-        return A.ImageCompression(quality_lower=quality[0], quality_upper=quality[1], p=prob)
-    except TypeError:
         return A.ImageCompression(quality_range=quality, p=prob)
+    except TypeError:
+        return A.ImageCompression(quality_lower=quality[0], quality_upper=quality[1], p=prob)
 
 
 class AlbumentationsTransform:

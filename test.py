@@ -49,7 +49,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() and config.get("training", {}).get("cuda", True) else "cpu")
     model = build_model(args.model, config).to(device)
     load_checkpoint(args.checkpoint, model, map_location=device)
-    metrics, _ = evaluate(model, loader, device)
+    metrics, _ = evaluate(model, loader, device, desc=f"Test {args.dataset}_{args.split}")
 
     results_dir = Path(config.get("evaluation", {}).get("results_dir", "results"))
     results_dir.mkdir(parents=True, exist_ok=True)
