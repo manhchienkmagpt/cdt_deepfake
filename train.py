@@ -24,15 +24,31 @@ else:
 def build_loader(config, dataset_name: str, split: str, train: bool):
     data_cfg = config.get("data", {})
     transform = build_transforms(config, train=train)
+    real_upsample_factor = int(data_cfg.get("real_upsample_factor", 1)) if train else 1
     if dataset_name == "ffpp":
-        dataset = DeepfakeImageFolderDataset(data_cfg["ffpp_root"], dataset="ffpp", split=split, transform=transform)
+        dataset = DeepfakeImageFolderDataset(
+            data_cfg["ffpp_root"],
+            dataset="ffpp",
+            split=split,
+            transform=transform,
+            real_upsample_factor=real_upsample_factor,
+        )
     elif dataset_name == "celebdf":
-        dataset = DeepfakeImageFolderDataset(data_cfg["celebdf_test_root"], dataset="celebdf", transform=transform)
+        dataset = DeepfakeImageFolderDataset(
+            data_cfg["celebdf_test_root"],
+            dataset="celebdf",
+            transform=transform,
+            real_upsample_factor=real_upsample_factor,
+        )
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
     counts = dataset.class_counts()
-    print(f"{dataset_name.upper()} {split}: real={counts['real']} fake={counts['fake']} total={counts['total']}")
+    upsample_text = f" real_upsample_factor={real_upsample_factor}" if train else ""
+    print(
+        f"{dataset_name.upper()} {split}: real={counts['real']} "
+        f"fake={counts['fake']} total={counts['total']}{upsample_text}"
+    )
     return DataLoader(
         dataset,
         batch_size=int(data_cfg.get("batch_size", 16)),
@@ -46,10 +62,18 @@ def main():
     parser = argparse.ArgumentParser(description="Train deepfake detector on flat FF++ image folders.")
     parser.add_argument("--model", required=True, choices=["efficientb4", "fwa", "ucf", "srm", "spsl"])
     parser.add_argument("--config", required=True)
+    parser.add_argument(
+        "--real-upsample-factor",
+        type=int,
+        default=None,
+        help="Override data.real_upsample_factor for train split. 1 disables real upsampling.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
     config["model_name"] = args.model
+    if args.real_upsample_factor is not None:
+        config.setdefault("data", {})["real_upsample_factor"] = args.real_upsample_factor
     set_seed(int(config.get("training", {}).get("seed", 1024)))
     logger = setup_logger(config.get("logging", {}).get("log_dir", "logs"))
     device = torch.device("cuda" if torch.cuda.is_available() and config.get("training", {}).get("cuda", True) else "cpu")

@@ -36,12 +36,16 @@ class DeepfakeImageFolderDataset(Dataset):
         split: Optional[str] = None,
         transform=None,
         extensions: Optional[Iterable[str]] = None,
+        real_upsample_factor: int = 1,
     ) -> None:
         self.root = Path(root)
         self.dataset = dataset.lower()
         self.split = split
         self.transform = transform
         self.extensions = {ext.lower() for ext in (extensions or SUPPORTED_EXTENSIONS)}
+        self.real_upsample_factor = int(real_upsample_factor)
+        if self.real_upsample_factor < 1:
+            raise ValueError("real_upsample_factor must be >= 1")
 
         if self.dataset == "ffpp":
             if split not in {"train", "val", "test"}:
@@ -60,6 +64,8 @@ class DeepfakeImageFolderDataset(Dataset):
         self.samples = self._scan_samples()
         if not self.samples:
             raise RuntimeError(f"No supported images found in: {self.scan_root}")
+        if self.real_upsample_factor > 1:
+            self.samples = self._upsample_real_samples(self.samples)
 
     def _scan_samples(self) -> List[Tuple[Path, int]]:
         samples: List[Tuple[Path, int]] = []
@@ -82,6 +88,12 @@ class DeepfakeImageFolderDataset(Dataset):
 
         return samples
 
+    def _upsample_real_samples(self, samples: List[Tuple[Path, int]]) -> List[Tuple[Path, int]]:
+        real_samples = [sample for sample in samples if sample[1] == 0]
+        if not real_samples:
+            return samples
+        return samples + real_samples * (self.real_upsample_factor - 1)
+
     def class_counts(self) -> Dict[str, int]:
         real = sum(1 for _, label in self.samples if label == 0)
         fake = sum(1 for _, label in self.samples if label == 1)
@@ -96,4 +108,3 @@ class DeepfakeImageFolderDataset(Dataset):
         if self.transform is not None:
             image = self.transform(image)
         return image, label, str(image_path)
-
