@@ -112,7 +112,62 @@ Checkpoint tot nhat duoc luu tai:
 checkpoints/<model>_best.pth
 ```
 
-## 6. Cach test FF++ test
+## 6. Cach train voi them fake GAN
+
+Dung `train_with_gan.py` khi muon train giong `train.py`, nhung them mot folder anh fake khac vao rieng FF++ train split. Tat ca anh trong folder GAN se duoc gan label `fake = 1`.
+
+Vi du folder GAN fake:
+
+```text
+gan-fake-images/
+├── image_001.jpg
+├── image_002.png
+└── run_01/
+    └── image_003.jpg
+```
+
+Mac dinh code se quet ca cac subfolder ben trong `gan_fake_root`. Co the chay bang CLI:
+
+```bash
+python train_with_gan.py --model efficientb4 --config configs/efficientb4.yaml --gan-fake-root "D:/path/to/gan-fake-images"
+```
+
+Thay model/config tuong ung neu can:
+
+```bash
+python train_with_gan.py --model fwa --config configs/fwa.yaml --gan-fake-root "D:/path/to/gan-fake-images"
+python train_with_gan.py --model ucf --config configs/ucf.yaml --gan-fake-root "D:/path/to/gan-fake-images"
+python train_with_gan.py --model srm --config configs/srm.yaml --gan-fake-root "D:/path/to/gan-fake-images"
+python train_with_gan.py --model spsl --config configs/spsl.yaml --gan-fake-root "D:/path/to/gan-fake-images"
+```
+
+Hoac cau hinh truc tiep trong `configs/*.yaml`:
+
+```yaml
+data:
+  gan_fake_root: "D:/path/to/gan-fake-images"
+  gan_fake_recursive: true
+```
+
+Sau do chay:
+
+```bash
+python train_with_gan.py --model efficientb4 --config configs/efficientb4.yaml
+```
+
+Neu muon ket hop voi upsampling real:
+
+```bash
+python train_with_gan.py --model efficientb4 --config configs/efficientb4.yaml --gan-fake-root "D:/path/to/gan-fake-images" --real-upsample-factor 4
+```
+
+Luu y:
+
+- GAN fake chi duoc them vao FF++ train.
+- FF++ val, FF++ test va CelebDF test giu nguyen de danh gia cong bang.
+- Neu khong truyen `--gan-fake-root` va `data.gan_fake_root` dang la `null`, chuong trinh se bao loi.
+
+## 7. Cach test FF++ test
 
 ```bash
 python test.py --model efficientb4 --config configs/efficientb4.yaml --checkpoint checkpoints/efficientb4_best.pth --dataset ffpp --split test
@@ -120,13 +175,13 @@ python test.py --model efficientb4 --config configs/efficientb4.yaml --checkpoin
 
 Thay `efficientb4` bang `fwa`, `ucf`, `srm`, hoac `spsl` neu can test model khac.
 
-## 7. Cach test cross-dataset CelebDF
+## 8. Cach test cross-dataset CelebDF
 
 ```bash
 python test.py --model efficientb4 --config configs/efficientb4.yaml --checkpoint checkpoints/efficientb4_best.pth --dataset celebdf
 ```
 
-## 8. Cach xem ket qua metrics
+## 9. Cach xem ket qua metrics
 
 Metrics duoc in ra terminal va luu JSON trong folder `results/`, vi du:
 
@@ -144,7 +199,7 @@ Ten metric trong file JSON:
 - `Recall`
 - `AUC`
 
-## 9. Mapping label real/fake
+## 10. Mapping label real/fake
 
 FF++:
 
@@ -170,4 +225,3 @@ Neu file pretrained khong ton tai, code se log warning va train tu dau. De dung 
 ## Ghi chu UCF
 
 UCF goc cua DeepfakeBench dung pair dataset va label rieng cho tung loai fake de tinh them specific/reconstruction/contrastive loss. Dataset moi trong project nay chi co flat image folder va binary label, nen module UCF giu dual encoder va common/specific feature heads, nhung training/evaluation dung binary common head de chay dung voi output `image, label, image_path`.
-
